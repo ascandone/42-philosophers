@@ -1,0 +1,79 @@
+import Async
+import IO
+import MVar
+import Task.{await}
+import Time
+
+/// is the number of philosophers and also the number of forks
+let number_of_philosophers = 4
+
+/// is in milliseconds, if a philosopher doesn’t start eating ’time_to_die’
+/// milliseconds after starting his last meal or the beginning of the simulation, it dies
+let time_to_die = 310
+
+/// is in milliseconds and is the time it takes for a philosopher to eat.
+/// During that time he will need to keep the two forks.
+let time_to_eat = 200
+
+/// is in milliseconds and is the time the philosopher will spend sleeping.
+let time_to_sleep = 100
+
+let log = fn id, mess {
+  let#await ts = Time.now;
+  let msg = String.from_int(ts) <> " " <> String.from_int(id) <> " " <> mess;
+  IO.println(msg)
+}
+
+let put_n_forks = fn forks_mvar, num_forks {
+  if num_forks <= 0 {
+    Task.none
+  } else {
+    let#await _unit = MVar.put(forks_mvar, Unit);
+    put_n_forks(forks_mvar, num_forks - 1)
+  }
+}
+
+let philosopher_starvation = fn id, fed_up_mvar {
+  let#await result = Async.race([
+    Task.sleep(time_to_die)
+    |> Task.map(Err),
+    MVar.take(fed_up_mvar)
+    |> Task.map(Ok),
+  ]);
+  match result {
+    Err(Unit) => Task.none,
+    Ok(Unit) => philosopher_starvation(id, fed_up_mvar),
+  }
+}
+
+let philosopher_loop = fn id, forks, fed_up_mvar {
+  let#await _fork1 = MVar.take(forks);
+  let#await _unit = log(id, "has taken a fork");
+  let#await _fork2 = MVar.take(forks);
+  let#await _unit = log(id, "has taken a fork");
+  let#await _unit = Task.sleep(time_to_eat);
+  let#await _unit = MVar.put_async(fed_up_mvar, Unit);
+  let#await _unit = MVar.put_async(forks, Unit);
+  let#await _unit = MVar.put_async(forks, Unit);
+  let#await _unit = log(id, "is sleeping");
+  let#await _unit = Task.sleep(time_to_sleep);
+  let#await _unit = log(id, "is thinking");
+  philosopher_loop(id, forks, fed_up_mvar)
+}
+
+pub let main = {
+  let#await forks_mvar = MVar.empty;
+  let#await _unit = Task.fork(put_n_forks(forks_mvar, number_of_philosophers));
+  List.range(0, number_of_philosophers)
+  |> List.map(fn id {
+    let#await fed_up_mvar = MVar.empty;
+    let#await _proc_id = Task.fork(
+      philosopher_loop(id, forks_mvar, fed_up_mvar),
+    );
+    let#await _unit = philosopher_starvation(id, fed_up_mvar);
+    let#await _ = log(id, "died");
+    Task.of(Err(Unit))
+  })
+  |> Async.all_ok()
+  |> Task.discard()
+}
