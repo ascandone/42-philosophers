@@ -6,9 +6,6 @@ Implementation of the exercise of [42 school](https://42.fr/en/homepage/) about 
 Specs (copy-pasted from [this repo](https://github.com/Gaspachow/philosophers-42)):
 
 ```
-• This project is to be coded in C, following the 42 Norm. Any leak, crash, undefined
-behavior or norm error means 0 to the project.
-
 • A number of philosophers are sitting at a round table doing one of three things:
 eating, thinking or sleeping.
 
